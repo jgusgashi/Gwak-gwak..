@@ -1,0 +1,1 @@
+# use /cookies command to update cookies after bot is deployed
