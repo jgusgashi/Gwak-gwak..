@@ -252,66 +252,72 @@ async def account_login(bot: Client, m: Message):
                             continue
 
                     elif "*--appx-pdf" in url or "*--appx-pdf?key=" in url:
-                        if "*--appx-pdf?key=" in url:
-                            url, key = url.split('*--appx-pdf?key=')
-                            key = key.strip()
-                        elif "*--appx-pdf" in url:
-                            url, key = url.split('*--appx-pdf')
-                            key = key.strip()
-                        else:
-                            url, key = url.split('*')
-        
-                        #url, key = url.split('*')
-                        print(f"Pdf Url: {url}\nKey: {key}")
-                        
                         try:
-                            # Use yt-dlp to download the PDF
+                            # Extract key and clean URL
+                            if "*--appx-pdf?key=" in url:
+                                url, key = url.split('*--appx-pdf?key=')
+                                key = key.strip()
+                            elif "*--appx-pdf" in url:
+                                url, key = url.split('*--appx-pdf')
+                                key = key.strip()
+                            else:
+                                url, key = url.split('*')
+                                key = key.strip()
+
+                            if not key:
+                                raise ValueError("Decryption key is empty")
+
+                            print(f"Processing PDF - URL: {url}\nKey: {key}")
+                            
+                            # Download PDF
                             cmd = f'yt-dlp -o "{name}.pdf" "{url}"'
                             download_cmd = f"{cmd} -R 25 --fragment-retries 25"
                             os.system(download_cmd)
                     
                             pdf_path = f'{name}.pdf'
                     
-                            if os.path.exists(pdf_path):
-                                print("PDF downloaded successfully, now decrypting it.")
-                                
-                                try:
-                                    file_size = os.path.getsize(pdf_path)
-                                    i10 = min(file_size, 28)
-                    
-                                    with open(pdf_path, "r+b") as file:
-                                        mmapped_file = mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_WRITE)
-                    
-                                        for i11 in range(i10):
-                                            b10 = mmapped_file[i11]
-                                            mmapped_file[i11] = (
-                                                ord(key[i11]) ^ b10 if i11 < len(key) else b10 ^ i11
-                                            )
-                    
-                                        mmapped_file.flush()
-                                        mmapped_file.close()
+                            if not os.path.exists(pdf_path):
+                                raise FileNotFoundError("PDF download failed")
 
-                                    await bot.send_document(chat_id=m.chat.id, document=pdf_path, caption=cc1)
-                                    #save_file_id(collection, original_url, file_id, "document")
-                                    print("Decrypted PDF sent successfully.")
-                                    # Remove the file after sending
-                                    os.remove(pdf_path)
-                                    print("Decrypted PDF removed from local storage.")
-                                    count +=1         
-                                    time.sleep(5)  # Wait for 5 seconds
-                                    continue
+                            print(f"PDF downloaded successfully to {pdf_path}")
+                            file_size = os.path.getsize(pdf_path)
+                            print(f"PDF size: {file_size} bytes")
+                                
+                            # Decrypt PDF
+                            with open(pdf_path, "r+b") as file:
+                                try:
+                                    mmapped_file = mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_WRITE)
+                                    decrypt_size = min(file_size, 28)
                     
+                                    for i in range(decrypt_size):
+                                        current_byte = mmapped_file[i]
+                                        if i < len(key):
+                                            mmapped_file[i] = current_byte ^ ord(key[i])
+                                        else:
+                                            mmapped_file[i] = current_byte ^ i
+                    
+                                    mmapped_file.flush()
+                                    mmapped_file.close()
+                                    print("PDF decryption completed")
                                 except Exception as e:
-                                    print(f"Error during decryption or sending: {e}")
-                                    continue
-                    
-                            else:
-                                print("PDF download failed.")
-                                continue
-                    
+                                    raise Exception(f"Decryption failed: {str(e)}")
+
+                            # Send file
+                            await bot.send_document(chat_id=m.chat.id, document=pdf_path, caption=cc1)
+                            count += 1
+                            print("PDF sent successfully")
+                            
                         except Exception as e:
-                            print(f"An error occurred: {e}")
+                            error_msg = f"PDF processing failed: {str(e)}"
+                            print(error_msg)
+                            await m.reply_text(error_msg)
                             continue
+                        finally:
+                            # Cleanup
+                            if 'pdf_path' in locals() and os.path.exists(pdf_path):
+                                os.remove(pdf_path)
+                                print("Temporary PDF file removed")
+                            time.sleep(5)
                     elif ".pdf" in url:
                         try:
                             cmd = f'yt-dlp -o "{name}.pdf" "{url}"'
