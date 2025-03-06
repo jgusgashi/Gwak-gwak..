@@ -23,7 +23,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import m3u8
 
 bot = Client("bot",
-             bot_token= "7292523182:AAF5j-wZy4Ugq3LD3Y3tvXpz7BT5aSB2OYw",
+             bot_token= "8007872977:AAGzh9RvOZ3nLi0a6poEas7qXycFBLPiykQ",
              api_id= 29376235,
              api_hash= "d7c10b0e14c1355dde0fec9d37c19b54")
 
@@ -129,16 +129,23 @@ async def account_login(bot: Client, m: Message):
             for i in range(count - 1, len(links)):
                 V = links[i][1].replace("file/d/","uc?export=download&id=").replace("www.youtube-nocookie.com/embed", "youtu.be").replace("?modestbranding=1", "").replace("/view?usp=sharing","")
                 url = "https://" + V
-          
-                if "*--appx-video?key=" in url:
-                    url, key = url.split('*--appx-video?key=')
-                    key = key.strip()  # Clean up the key
-                elif "*--appx-video" in url:
-                    url, key = url.split('*--appx-video')
-                    key = key.strip()  # Clean up the key
-                else:
-                    url, key = url.split('*')
-      
+                
+                try:
+                    if "*--appx-video?key=" in url:
+                        url, key = url.split('*--appx-video?key=')
+                        key = key.strip()  # Clean up the key
+                    elif "*--appx-video" in url:
+                        url, key = url.split('*--appx-video')
+                        key = key.strip()  # Clean up the key
+                    elif "*" in url:
+                        url, key = url.split('*')
+                        key = key.strip()  # Clean up the key
+                    else:
+                        key = None  # No key found in URL
+                except Exception as e:
+                    await m.reply_text(f"Error processing URL: {str(e)}")
+                    continue
+
                 if "visionias" in url:
                     async with ClientSession() as session:
                         async with session.get(url, headers={'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9', 'Accept-Language': 'en-US,en;q=0.9', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Pragma': 'no-cache', 'Referer': 'http://www.visionias.in/', 'Sec-Fetch-Dest': 'iframe', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'cross-site', 'Upgrade-Insecure-Requests': '1', 'User-Agent': 'Mozilla/5.0 (Linux; Android 12; RMX2121) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Mobile Safari/537.36', 'sec-ch-ua': '"Chromium";v="107", "Not=A?Brand";v="24"', 'sec-ch-ua-mobile': '?1', 'sec-ch-ua-platform': '"Android"',}) as resp:
