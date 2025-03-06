@@ -156,13 +156,74 @@ def time_name():
 
 def decrypt_file(file_path, key):
     if not os.path.exists(file_path):
+        logging.error(f"File not found for decryption: {file_path}")
         return False
-    with open(file_path, "r+b") as f:
-        num_bytes = min(28, os.path.getsize(file_path))
-        with mmap.mmap(f.fileno(), length=num_bytes, access=mmap.ACCESS_WRITE) as mmapped_file:
-            for i in range(num_bytes):
-                mmapped_file[i] ^= ord(key[i]) if i < len(key) else i
-    return file_path
+    
+    try:
+        file_size = os.path.getsize(file_path)
+        if file_size == 0:
+            logging.error(f"File is empty: {file_path}")
+            return False
+            
+        logging.info(f"Decrypting file: {file_path} (size: {human_readable_size(file_size)}) with key: {key}")
+        
+        # Ensure key is properly decoded if it's base64
+        try:
+            import base64
+            # Check if key looks like base64
+            if '=' in key and len(key) % 4 == 0:
+                decoded_key = base64.b64decode(key).decode('utf-8')
+                logging.info(f"Decoded base64 key: {decoded_key}")
+                key = decoded_key
+        except Exception as e:
+            logging.warning(f"Key doesn't appear to be base64 or couldn't be decoded: {str(e)}")
+        
+        with open(file_path, "r+b") as f:
+            num_bytes = min(28, file_size)
+            logging.info(f"Decrypting first {num_bytes} bytes of file")
+            
+            with mmap.mmap(f.fileno(), length=num_bytes, access=mmap.ACCESS_WRITE) as mmapped_file:
+                # Log the first few bytes before decryption for debugging
+                before_bytes = mmapped_file[:min(10, num_bytes)]
+                logging.info(f"First bytes before decryption: {before_bytes.hex()}")
+                
+                for i in range(num_bytes):
+                    mmapped_file[i] ^= ord(key[i]) if i < len(key) else i
+                
+                # Log the first few bytes after decryption for debugging
+                after_bytes = mmapped_file[:min(10, num_bytes)]
+                logging.info(f"First bytes after decryption: {after_bytes.hex()}")
+        
+        # Verify the decrypted file is valid
+        try:
+            result = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", 
+                 "stream=codec_name,width,height", "-of", "csv=p=0", file_path],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10
+            )
+            if result.returncode == 0:
+                logging.info(f"Successfully verified decrypted file: {file_path}")
+            else:
+                logging.warning(f"Decrypted file may be invalid. FFprobe stderr: {result.stderr.decode()}")
+                # Try to fix the file with ffmpeg
+                fix_file_path = f"{file_path}.fixed.mp4"
+                logging.info(f"Attempting to fix file with FFmpeg: {fix_file_path}")
+                fix_result = subprocess.run(
+                    ["ffmpeg", "-i", file_path, "-c", "copy", fix_file_path],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                if fix_result.returncode == 0 and os.path.exists(fix_file_path):
+                    logging.info(f"Successfully fixed file: {fix_file_path}")
+                    os.replace(fix_file_path, file_path)
+                else:
+                    logging.error(f"Failed to fix file. FFmpeg stderr: {fix_result.stderr.decode()}")
+        except Exception as e:
+            logging.error(f"Error verifying decrypted file: {str(e)}")
+        
+        return file_path
+    except Exception as e:
+        logging.error(f"Error during file decryption: {str(e)}")
+        return False
 
 async def download_video(url, cmd, name):
     failed_counter = 0  # Initialize the counter
@@ -199,21 +260,46 @@ async def download_video(url, cmd, name):
             raise
 
     elif "?key=" in url and "m3u8" not in url: #and "transcoded" in url:
-        base_url, key = url.split("?key=")
-       # key, iv = key_iv.split("?IV=")
-        download_cmd = f'{cmd} -R 25 --fragment-retries 25 --external-downloader aria2c --downloader-args "aria2c: -x 16 -j 32"'
-        print(download_cmd)
-        logging.info(download_cmd)
-        subprocess.run(download_cmd, shell=True)
-        print("Decrypting the video")   
-        # Decrypt the downloaded file
-        file_path = f"{name}.mp4"  # Adjust this if the file extension is different
-        decrypted_file = decrypt_file(file_path, key)
-        if decrypted_file:
-            print("Video Decrypted Successully")   
-            return decrypted_file
-        else:
-            raise Exception("File decryption failed.")
+        try:
+            base_url, key = url.split("?key=")
+            # key, iv = key_iv.split("?IV=")
+            download_cmd = f'{cmd} -R 25 --fragment-retries 25 --external-downloader aria2c --downloader-args "aria2c: -x 16 -j 32"'
+            print(download_cmd)
+            logging.info(f"Encrypted video download command: {download_cmd}")
+            
+            # Run the download command and capture output
+            process = subprocess.run(download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if process.returncode != 0:
+                logging.error(f"Download command failed with code {process.returncode}")
+                logging.error(f"STDERR: {process.stderr.decode()}")
+                raise Exception(f"Download command failed with code {process.returncode}")
+                
+            print("Decrypting the video")
+            logging.info("Starting video decryption")
+            
+            # Decrypt the downloaded file
+            file_path = f"{name}.mp4"  # Adjust this if the file extension is different
+            
+            # Check if file exists and has content
+            if not os.path.exists(file_path):
+                logging.error(f"Downloaded file not found: {file_path}")
+                raise FileNotFoundError(f"Downloaded file not found: {file_path}")
+                
+            if os.path.getsize(file_path) == 0:
+                logging.error(f"Downloaded file is empty: {file_path}")
+                raise Exception(f"Downloaded file is empty: {file_path}")
+            
+            decrypted_file = decrypt_file(file_path, key)
+            if decrypted_file:
+                print("Video Decrypted Successfully")
+                logging.info(f"Video successfully decrypted: {decrypted_file}")
+                return decrypted_file
+            else:
+                logging.error("File decryption failed")
+                raise Exception("File decryption failed")
+        except Exception as e:
+            logging.error(f"Error in encrypted video download: {str(e)}")
+            raise
 
     else:
         try:
