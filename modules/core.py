@@ -203,7 +203,7 @@ async def download_video(url, cmd, name):
         download_cmd = f'{cmd} -R 25 --fragment-retries 25 --external-downloader aria2c --downloader-args "aria2c: -x 16 -j 32"'
         print(download_cmd)
         logging.info(download_cmd)
-        #subprocess.run(download_cmd, shell=True)
+        subprocess.run(download_cmd, shell=True)
         print("Decrypting the video")
         file_path = f"{name}.mp4"
         decrypted_file = decrypt_file(file_path, key)
