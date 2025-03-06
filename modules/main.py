@@ -379,13 +379,36 @@ async def account_login(bot: Client, m: Message):
                     else:
                         Show = f"**🚀🅓ⱺ𝒘𝒏𝒍𝒐𝒂𝒅𝒊𝒏𝒈🚀 »**\n\n**⚓️Name »** `{name}`\n\n🖼**Quality** » `{raw_text2}`\n\n**Bot Developed by 𝐒𝗍ⱺ𝗅𝖾𐓣 𝐇𝖺𝗉𝗉𝗂𐓣𝖾𝗌𝗌❤️**"
                         prog = await m.reply_text(Show)
-                        res_file = await helper.download_video(url, cmd, name)
-                        filename = res_file
-                        await prog.delete(True)
-                        start_time = time.time()
-                        await helper.send_vid(bot, m, cc, filename, thumb, name, prog, start_time)
-                        count += 1
-                        time.sleep(4)
+                        
+                        if "transcoded-videos-v2.classx.co.in" in url:
+                            # Add special headers for classx.co.in domain
+                            cmd = f'yt-dlp -f "{ytf}" "{url}" -o "{name}.mp4" --no-check-certificates --downloader aria2c --downloader-args "aria2c: --check-certificate=false --continue=true --retry-wait=10 --max-tries=10 -x 16 -s 16 -k 1M"'
+                        else:
+                            cmd = f'yt-dlp -f "{ytf}" "{url}" -o "{name}.mp4" --downloader aria2c --downloader-args "aria2c: -x 16 -s 16 -k 1M"'
+                        
+                        try:
+                            res_file = await helper.download_video(url, cmd, name)
+                            if not os.path.exists(res_file):
+                                raise Exception("Download failed - File not found")
+                            
+                            # Verify the file is complete and valid
+                            verify_cmd = f'ffmpeg -v error -i "{res_file}" -f null - 2>&1'
+                            result = subprocess.run(verify_cmd, shell=True, capture_output=True, text=True)
+                            if result.stderr:
+                                raise Exception(f"Invalid or corrupt video file: {result.stderr}")
+                            
+                            filename = res_file
+                            await prog.delete(True)
+                            start_time = time.time()
+                            await helper.send_vid(bot, m, cc, filename, thumb, name, prog, start_time)
+                            count += 1
+                            time.sleep(4)
+                        except Exception as e:
+                            await prog.delete()
+                            await m.reply_text(f"**Download Failed**\n\n**Error:** {str(e)}\n\n**Name:** {name}")
+                            if os.path.exists(f"{name}.mp4"):
+                                os.remove(f"{name}.mp4")
+                            continue
                     
                 except Exception as e:
                     await m.reply_text(f"**Downloading Failed **\n\n**Error** » {str(e)}\n\n**Name** » {name}")
