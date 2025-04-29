@@ -23,7 +23,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import m3u8
 
 bot = Client("bot",
-             bot_token= "7292523182:AAF5j-wZy4Ugq3LD3Y3tvXpz7BT5aSB2OYw",
+             bot_token= "8042369467:AAELw_AYq0EtSAdUMCjU4YJUawvE_uyJxYY",
              api_id= 29376235,
              api_hash= "d7c10b0e14c1355dde0fec9d37c19b54")
 
